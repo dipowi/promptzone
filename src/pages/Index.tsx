@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Copy, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Copy, Edit2, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,6 +30,9 @@ const Index = () => {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isPasswordVerified, setIsPasswordVerified] = useState(false);
+  const [showPasswordBanner, setShowPasswordBanner] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [pendingAction, setPendingAction] = useState<{ type: string; data?: any } | null>(null);
   
   const { toast } = useToast();
 
@@ -84,31 +87,89 @@ const Index = () => {
     setCurrentPage(1);
   }, [searchQuery, prompts]);
 
-  const checkPassword = (action: string): boolean => {
+  const checkPassword = (action: string, data?: any): boolean => {
     if (isPasswordVerified) return true;
     
-    const enteredPassword = prompt(`Masukkan password untuk ${action}:`);
-    if (enteredPassword === PASSWORD) {
+    setPendingAction({ type: action, data });
+    setShowPasswordBanner(true);
+    return false;
+  };
+
+  const handlePasswordSubmit = () => {
+    if (passwordInput === PASSWORD) {
       setIsPasswordVerified(true);
-      return true;
-    } else if (enteredPassword !== null) {
+      setShowPasswordBanner(false);
+      setPasswordInput('');
+      
+      // Execute the pending action
+      if (pendingAction) {
+        switch (pendingAction.type) {
+          case 'add':
+            executeOpenModal();
+            break;
+          case 'edit':
+            executeOpenModal(pendingAction.data);
+            break;
+          case 'delete':
+            executeDeletePrompt(pendingAction.data.id, pendingAction.data.title);
+            break;
+        }
+        setPendingAction(null);
+      }
+    } else {
       toast({
         title: "Password salah!",
         description: "Silakan coba lagi.",
         variant: "destructive"
       });
+      setPasswordInput('');
     }
-    return false;
   };
 
-  const openModal = (prompt?: Prompt) => {
-    const action = prompt ? 'mengedit prompt' : 'menambah prompt baru';
-    if (!checkPassword(action)) return;
-
+  const executeOpenModal = (prompt?: Prompt) => {
     setEditingPrompt(prompt || null);
     setTitle(prompt?.title || '');
     setContent(prompt?.content || '');
     setIsModalOpen(true);
+  };
+
+  const executeDeletePrompt = async (id: string, title: string) => {
+    try {
+      const { error } = await supabase
+        .from('prompts')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting prompt:', error);
+        toast({
+          title: "Error",
+          description: "Gagal menghapus prompt.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Berhasil",
+        description: "Prompt berhasil dihapus."
+      });
+
+      loadPrompts();
+    } catch (error) {
+      console.error('Error deleting prompt:', error);
+      toast({
+        title: "Error",
+        description: "Gagal menghapus prompt.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const openModal = (prompt?: Prompt) => {
+    const action = prompt ? 'edit' : 'add';
+    if (!checkPassword(action, prompt)) return;
+    executeOpenModal(prompt);
   };
 
   const closeModal = () => {
@@ -192,38 +253,8 @@ const Index = () => {
   };
 
   const deletePrompt = async (id: string, title: string) => {
-    if (!checkPassword(`menghapus prompt "${title}"`)) return;
-
-    try {
-      const { error } = await supabase
-        .from('prompts')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('Error deleting prompt:', error);
-        toast({
-          title: "Error",
-          description: "Gagal menghapus prompt.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      toast({
-        title: "Berhasil",
-        description: "Prompt berhasil dihapus."
-      });
-
-      loadPrompts(); // Reload prompts from database
-    } catch (error) {
-      console.error('Error deleting prompt:', error);
-      toast({
-        title: "Error",
-        description: "Gagal menghapus prompt.",
-        variant: "destructive"
-      });
-    }
+    if (!checkPassword('delete', { id, title })) return;
+    executeDeletePrompt(id, title);
   };
 
   const copyToClipboard = async (text: string) => {
@@ -354,15 +385,80 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      {/* Password Banner */}
+      {showPasswordBanner && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Masukkan Password</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowPasswordBanner(false);
+                  setPasswordInput('');
+                  setPendingAction(null);
+                }}
+                className="text-slate-500 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-slate-600 mb-4">
+              Masukkan password untuk {pendingAction?.type === 'add' ? 'menambah prompt baru' : 
+                pendingAction?.type === 'edit' ? 'mengedit prompt' : 'menghapus prompt'}:
+            </p>
+            <div className="space-y-4">
+              <Input
+                type="password"
+                placeholder="Password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+                className="bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowPasswordBanner(false);
+                    setPasswordInput('');
+                    setPendingAction(null);
+                  }}
+                  className="flex-1"
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={handlePasswordSubmit}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  Konfirmasi
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto p-4 md:p-6">
         {/* Header */}
         <div className="bg-white rounded-xl p-6 mb-6 shadow-sm border border-slate-200">
           <div className="text-center mb-6">
             <h1 className="text-2xl md:text-3xl font-semibold text-slate-800 mb-3">
-              Prompt Manager
+              PROMPT ZONE
             </h1>
             <p className="text-slate-600 mb-6">
-              Kelola koleksi prompt AI Anda dengan mudah
+              Kumpulan prompt ai by{' '}
+              <a
+                href="https://fb.me/didin.prasetyawan"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-700 underline font-medium"
+              >
+                didin prasetyawan
+              </a>
             </p>
             <Button 
               onClick={() => openModal()}
