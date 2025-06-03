@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Copy, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,13 +6,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Prompt {
   id: string;
   title: string;
   content: string;
-  createdAt?: any;
-  updatedAt?: any;
+  created_at?: string;
+  updated_at?: string;
 }
 
 const PROMPTS_PER_PAGE = 10;
@@ -33,35 +33,42 @@ const Index = () => {
   
   const { toast } = useToast();
 
-  // Mock data - In real implementation, this would connect to Firebase
+  // Load prompts from Supabase
   useEffect(() => {
-    // Simulate loading
-    setTimeout(() => {
-      const mockPrompts: Prompt[] = [
-        {
-          id: '1',
-          title: 'Creative Writing Assistant',
-          content: 'Help me write a compelling story about a character who discovers they have the ability to...',
-          createdAt: new Date()
-        },
-        {
-          id: '2', 
-          title: 'Code Review Helper',
-          content: 'Please review this code for best practices, potential bugs, and optimization opportunities...',
-          createdAt: new Date()
-        },
-        {
-          id: '3',
-          title: 'Email Marketing Template',
-          content: 'Create a professional email template for a product launch announcement that includes...',
-          createdAt: new Date()
-        }
-      ];
-      setPrompts(mockPrompts);
-      setFilteredPrompts(mockPrompts);
-      setIsLoading(false);
-    }, 1000);
+    loadPrompts();
   }, []);
+
+  const loadPrompts = async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('prompts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading prompts:', error);
+        toast({
+          title: "Error",
+          description: "Gagal memuat prompts dari database.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setPrompts(data || []);
+      setFilteredPrompts(data || []);
+    } catch (error) {
+      console.error('Error loading prompts:', error);
+      toast({
+        title: "Error",
+        description: "Gagal memuat prompts.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Search functionality
   useEffect(() => {
@@ -111,7 +118,7 @@ const Index = () => {
     setContent('');
   };
 
-  const savePrompt = () => {
+  const savePrompt = async () => {
     if (!title.trim() || !content.trim()) {
       toast({
         title: "Error",
@@ -121,39 +128,102 @@ const Index = () => {
       return;
     }
 
-    const newPrompt: Prompt = {
-      id: editingPrompt?.id || Date.now().toString(),
-      title: title.trim(),
-      content: content.trim(),
-      createdAt: editingPrompt?.createdAt || new Date(),
-      updatedAt: new Date()
-    };
+    try {
+      if (editingPrompt) {
+        // Update existing prompt
+        const { error } = await supabase
+          .from('prompts')
+          .update({
+            title: title.trim(),
+            content: content.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingPrompt.id);
 
-    if (editingPrompt) {
-      setPrompts(prev => prev.map(p => p.id === editingPrompt.id ? newPrompt : p));
+        if (error) {
+          console.error('Error updating prompt:', error);
+          toast({
+            title: "Error",
+            description: "Gagal memperbarui prompt.",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        toast({
+          title: "Berhasil",
+          description: "Prompt berhasil diperbarui."
+        });
+      } else {
+        // Create new prompt
+        const { error } = await supabase
+          .from('prompts')
+          .insert({
+            title: title.trim(),
+            content: content.trim()
+          });
+
+        if (error) {
+          console.error('Error creating prompt:', error);
+          toast({
+            title: "Error",
+            description: "Gagal menambahkan prompt.",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        toast({
+          title: "Berhasil", 
+          description: "Prompt berhasil ditambahkan."
+        });
+      }
+
+      closeModal();
+      loadPrompts(); // Reload prompts from database
+    } catch (error) {
+      console.error('Error saving prompt:', error);
       toast({
-        title: "Berhasil",
-        description: "Prompt berhasil diperbarui."
-      });
-    } else {
-      setPrompts(prev => [newPrompt, ...prev]);
-      toast({
-        title: "Berhasil", 
-        description: "Prompt berhasil ditambahkan."
+        title: "Error",
+        description: "Gagal menyimpan prompt.",
+        variant: "destructive"
       });
     }
-
-    closeModal();
   };
 
-  const deletePrompt = (id: string, title: string) => {
+  const deletePrompt = async (id: string, title: string) => {
     if (!checkPassword(`menghapus prompt "${title}"`)) return;
 
-    setPrompts(prev => prev.filter(p => p.id !== id));
-    toast({
-      title: "Berhasil",
-      description: "Prompt berhasil dihapus."
-    });
+    try {
+      const { error } = await supabase
+        .from('prompts')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting prompt:', error);
+        toast({
+          title: "Error",
+          description: "Gagal menghapus prompt.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Berhasil",
+        description: "Prompt berhasil dihapus."
+      });
+
+      loadPrompts(); // Reload prompts from database
+    } catch (error) {
+      console.error('Error deleting prompt:', error);
+      toast({
+        title: "Error",
+        description: "Gagal menghapus prompt.",
+        variant: "destructive"
+      });
+    }
   };
 
   const copyToClipboard = async (text: string) => {
