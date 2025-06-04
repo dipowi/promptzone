@@ -28,7 +28,7 @@ const Index = () => {
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isPasswordVerified, setIsPasswordVerified] = useState(false);
   const [showPasswordBanner, setShowPasswordBanner] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -38,15 +38,12 @@ const Index = () => {
 
   // Ultra-optimized filtered prompts with useMemo
   const filteredPrompts = useMemo(() => {
-    if (searchQuery.trim() === '') {
-      return prompts;
-    }
+    if (!searchQuery.trim()) return prompts;
     const query = searchQuery.toLowerCase();
-    return prompts.filter(prompt => {
-      const titleMatch = prompt.title.toLowerCase().includes(query);
-      const contentMatch = prompt.content.toLowerCase().includes(query);
-      return titleMatch || contentMatch;
-    });
+    return prompts.filter(prompt => 
+      prompt.title.toLowerCase().includes(query) || 
+      prompt.content.toLowerCase().includes(query)
+    );
   }, [searchQuery, prompts]);
 
   // Ultra-optimized pagination calculation
@@ -58,21 +55,25 @@ const Index = () => {
     return { totalPages, currentPrompts };
   }, [filteredPrompts, currentPage]);
 
-  // Super optimized initial load
+  // Optimized initial load with minimal data
   useEffect(() => {
+    let mounted = true;
+    
     const loadPromptsUltraFast = async () => {
       try {
         setIsLoading(true);
         
-        // Ultra-optimized Supabase query - minimal data first
+        // Ultra-optimized query - only essential fields
         const { data, error } = await supabase
           .from('prompts')
           .select('id, title, content')
           .order('created_at', { ascending: false })
-          .limit(50); // Even smaller initial load
+          .limit(100); // Increased limit for better UX
+
+        if (!mounted) return;
 
         if (error) {
-          console.error('Error loading prompts:', error);
+          console.error('Database error:', error);
           toast({
             title: "Error",
             description: "Gagal memuat prompts.",
@@ -83,18 +84,23 @@ const Index = () => {
 
         setPrompts(data || []);
       } catch (error) {
-        console.error('Error loading prompts:', error);
+        if (!mounted) return;
+        console.error('Loading error:', error);
         toast({
           title: "Error",
           description: "Gagal memuat prompts.",
           variant: "destructive"
         });
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     };
 
     loadPromptsUltraFast();
+    
+    return () => {
+      mounted = false;
+    };
   }, [toast]);
 
   // Reset page when search changes
@@ -376,8 +382,8 @@ const Index = () => {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <p className="text-slate-600 text-xs">Memuat prompts...</p>
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-slate-600 text-xs">Loading...</p>
         </div>
       </div>
     );
