@@ -17,7 +17,7 @@ interface Prompt {
   updated_at?: string;
 }
 
-const PROMPTS_PER_PAGE = 6; // Reduced even more for faster loading
+const PROMPTS_PER_PAGE = 10; // 2 columns x 5 rows
 const PASSWORD = "300695";
 
 const Index = () => {
@@ -36,18 +36,20 @@ const Index = () => {
   
   const { toast } = useToast();
 
-  // Optimized filtered prompts with useMemo
+  // Ultra-optimized filtered prompts with useMemo
   const filteredPrompts = useMemo(() => {
     if (searchQuery.trim() === '') {
       return prompts;
     }
-    return prompts.filter(prompt =>
-      prompt.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      prompt.content.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const query = searchQuery.toLowerCase();
+    return prompts.filter(prompt => {
+      const titleMatch = prompt.title.toLowerCase().includes(query);
+      const contentMatch = prompt.content.toLowerCase().includes(query);
+      return titleMatch || contentMatch;
+    });
   }, [searchQuery, prompts]);
 
-  // Optimized pagination calculation
+  // Ultra-optimized pagination calculation
   const paginationData = useMemo(() => {
     const totalPages = Math.ceil(filteredPrompts.length / PROMPTS_PER_PAGE);
     const startIndex = (currentPage - 1) * PROMPTS_PER_PAGE;
@@ -56,18 +58,18 @@ const Index = () => {
     return { totalPages, currentPrompts };
   }, [filteredPrompts, currentPage]);
 
-  // Load prompts from Supabase with optimizations
+  // Super optimized initial load
   useEffect(() => {
-    const loadPromptsOptimized = async () => {
+    const loadPromptsUltraFast = async () => {
       try {
         setIsLoading(true);
         
-        // Optimize Supabase query with minimal fields first
+        // Ultra-optimized Supabase query - minimal data first
         const { data, error } = await supabase
           .from('prompts')
-          .select('id, title, content, created_at')
+          .select('id, title, content')
           .order('created_at', { ascending: false })
-          .limit(100); // Limit initial load
+          .limit(50); // Even smaller initial load
 
         if (error) {
           console.error('Error loading prompts:', error);
@@ -92,7 +94,7 @@ const Index = () => {
       }
     };
 
-    loadPromptsOptimized();
+    loadPromptsUltraFast();
   }, [toast]);
 
   // Reset page when search changes
@@ -332,7 +334,7 @@ const Index = () => {
         size="sm"
         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
         disabled={currentPage === 1}
-        className="min-w-[32px] h-8"
+        className="min-w-[28px] h-7"
       >
         <ChevronLeft className="w-3 h-3" />
       </Button>
@@ -346,7 +348,7 @@ const Index = () => {
           variant={i === currentPage ? "default" : "outline"}
           size="sm"
           onClick={() => setCurrentPage(i)}
-          className="min-w-[32px] h-8 text-xs"
+          className="min-w-[28px] h-7 text-xs"
         >
           {i}
         </Button>
@@ -361,7 +363,7 @@ const Index = () => {
         size="sm"
         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
         disabled={currentPage === totalPages}
-        className="min-w-[32px] h-8"
+        className="min-w-[28px] h-7"
       >
         <ChevronRight className="w-3 h-3" />
       </Button>
@@ -374,8 +376,8 @@ const Index = () => {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-3"></div>
-          <p className="text-slate-600 text-sm">Memuat prompts...</p>
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-slate-600 text-xs">Memuat prompts...</p>
         </div>
       </div>
     );
@@ -386,9 +388,9 @@ const Index = () => {
       {/* Password Banner */}
       {showPasswordBanner && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-4 w-full max-w-sm shadow-xl">
+          <div className="bg-white rounded-lg p-4 w-full max-w-xs shadow-xl">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-base font-semibold text-slate-800">Password</h3>
+              <h3 className="text-sm font-semibold text-slate-800">Password</h3>
               <Button
                 variant="ghost"
                 size="sm"
@@ -397,12 +399,12 @@ const Index = () => {
                   setPasswordInput('');
                   setPendingAction(null);
                 }}
-                className="text-slate-500 hover:text-slate-700 h-6 w-6 p-0"
+                className="text-slate-500 hover:text-slate-700 h-5 w-5 p-0"
               >
                 <X className="w-3 h-3" />
               </Button>
             </div>
-            <p className="text-slate-600 mb-3 text-sm">
+            <p className="text-slate-600 mb-3 text-xs">
               Masukkan password untuk {pendingAction?.type === 'add' ? 'menambah' : 
                 pendingAction?.type === 'edit' ? 'mengedit' : 'menghapus'} prompt:
             </p>
@@ -413,7 +415,7 @@ const Index = () => {
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-                className="bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 h-8"
+                className="bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 h-7 text-xs"
                 autoFocus
               />
               <div className="flex gap-2">
@@ -424,13 +426,13 @@ const Index = () => {
                     setPasswordInput('');
                     setPendingAction(null);
                   }}
-                  className="flex-1 h-8 text-xs"
+                  className="flex-1 h-7 text-xs"
                 >
                   Batal
                 </Button>
                 <Button
                   onClick={handlePasswordSubmit}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 h-8 text-xs"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 h-7 text-xs"
                 >
                   OK
                 </Button>
@@ -482,7 +484,7 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Prompts Grid */}
+        {/* Prompts Grid - 2 Columns */}
         {paginationData.currentPrompts.length === 0 ? (
           <div className="bg-slate-50 rounded-lg p-8 text-center border border-dashed border-slate-300">
             <p className="text-slate-500 text-sm">
@@ -491,7 +493,7 @@ const Index = () => {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-3 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               {paginationData.currentPrompts.map((prompt) => (
                 <div
                   key={prompt.id}
@@ -500,7 +502,7 @@ const Index = () => {
                   <h3 className="font-semibold text-slate-800 mb-2 text-sm leading-tight text-center">
                     {prompt.title}
                   </h3>
-                  <div className="mb-3 max-h-20 overflow-y-auto">
+                  <div className="mb-3 max-h-16 overflow-y-auto">
                     <p className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap break-words">
                       {prompt.content}
                     </p>
