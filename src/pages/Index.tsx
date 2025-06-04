@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, Plus, Copy, Edit2, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,12 +17,11 @@ interface Prompt {
   updated_at?: string;
 }
 
-const PROMPTS_PER_PAGE = 10;
+const PROMPTS_PER_PAGE = 8; // Reduced for faster loading
 const PASSWORD = "300695";
 
 const Index = () => {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [filteredPrompts, setFilteredPrompts] = useState<Prompt[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,12 +36,37 @@ const Index = () => {
   
   const { toast } = useToast();
 
+  // Optimized filtered prompts with useMemo
+  const filteredPrompts = useMemo(() => {
+    if (searchQuery.trim() === '') {
+      return prompts;
+    }
+    return prompts.filter(prompt =>
+      prompt.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      prompt.content.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [searchQuery, prompts]);
+
+  // Optimized pagination calculation
+  const paginationData = useMemo(() => {
+    const totalPages = Math.ceil(filteredPrompts.length / PROMPTS_PER_PAGE);
+    const startIndex = (currentPage - 1) * PROMPTS_PER_PAGE;
+    const currentPrompts = filteredPrompts.slice(startIndex, startIndex + PROMPTS_PER_PAGE);
+    
+    return { totalPages, currentPrompts };
+  }, [filteredPrompts, currentPage]);
+
   // Load prompts from Supabase
   useEffect(() => {
     loadPrompts();
   }, []);
 
-  const loadPrompts = async () => {
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  const loadPrompts = useCallback(async () => {
     try {
       setIsLoading(true);
       const { data, error } = await supabase
@@ -60,7 +85,6 @@ const Index = () => {
       }
 
       setPrompts(data || []);
-      setFilteredPrompts(data || []);
     } catch (error) {
       console.error('Error loading prompts:', error);
       toast({
@@ -71,37 +95,22 @@ const Index = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
-  // Search functionality
-  useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredPrompts(prompts);
-    } else {
-      const filtered = prompts.filter(prompt =>
-        prompt.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        prompt.content.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredPrompts(filtered);
-    }
-    setCurrentPage(1);
-  }, [searchQuery, prompts]);
-
-  const checkPassword = (action: string, data?: any): boolean => {
+  const checkPassword = useCallback((action: string, data?: any): boolean => {
     if (isPasswordVerified) return true;
     
     setPendingAction({ type: action, data });
     setShowPasswordBanner(true);
     return false;
-  };
+  }, [isPasswordVerified]);
 
-  const handlePasswordSubmit = () => {
+  const handlePasswordSubmit = useCallback(() => {
     if (passwordInput === PASSWORD) {
       setIsPasswordVerified(true);
       setShowPasswordBanner(false);
       setPasswordInput('');
       
-      // Execute the pending action
       if (pendingAction) {
         switch (pendingAction.type) {
           case 'add':
@@ -124,16 +133,16 @@ const Index = () => {
       });
       setPasswordInput('');
     }
-  };
+  }, [passwordInput, pendingAction, toast]);
 
-  const executeOpenModal = (prompt?: Prompt) => {
+  const executeOpenModal = useCallback((prompt?: Prompt) => {
     setEditingPrompt(prompt || null);
     setTitle(prompt?.title || '');
     setContent(prompt?.content || '');
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const executeDeletePrompt = async (id: string, title: string) => {
+  const executeDeletePrompt = useCallback(async (id: string, title: string) => {
     try {
       const { error } = await supabase
         .from('prompts')
@@ -164,22 +173,22 @@ const Index = () => {
         variant: "destructive"
       });
     }
-  };
+  }, [toast, loadPrompts]);
 
-  const openModal = (prompt?: Prompt) => {
+  const openModal = useCallback((prompt?: Prompt) => {
     const action = prompt ? 'edit' : 'add';
     if (!checkPassword(action, prompt)) return;
     executeOpenModal(prompt);
-  };
+  }, [checkPassword, executeOpenModal]);
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setIsModalOpen(false);
     setEditingPrompt(null);
     setTitle('');
     setContent('');
-  };
+  }, []);
 
-  const savePrompt = async () => {
+  const savePrompt = useCallback(async () => {
     if (!title.trim() || !content.trim()) {
       toast({
         title: "Error",
@@ -191,7 +200,6 @@ const Index = () => {
 
     try {
       if (editingPrompt) {
-        // Update existing prompt
         const { error } = await supabase
           .from('prompts')
           .update({
@@ -216,7 +224,6 @@ const Index = () => {
           description: "Prompt berhasil diperbarui."
         });
       } else {
-        // Create new prompt
         const { error } = await supabase
           .from('prompts')
           .insert({
@@ -241,7 +248,7 @@ const Index = () => {
       }
 
       closeModal();
-      loadPrompts(); // Reload prompts from database
+      loadPrompts();
     } catch (error) {
       console.error('Error saving prompt:', error);
       toast({
@@ -250,14 +257,14 @@ const Index = () => {
         variant: "destructive"
       });
     }
-  };
+  }, [title, content, editingPrompt, toast, closeModal, loadPrompts]);
 
-  const deletePrompt = async (id: string, title: string) => {
+  const deletePrompt = useCallback(async (id: string, title: string) => {
     if (!checkPassword('delete', { id, title })) return;
     executeDeletePrompt(id, title);
-  };
+  }, [checkPassword, executeDeletePrompt]);
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboard = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       toast({
@@ -271,18 +278,14 @@ const Index = () => {
         variant: "destructive"
       });
     }
-  };
+  }, [toast]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredPrompts.length / PROMPTS_PER_PAGE);
-  const startIndex = (currentPage - 1) * PROMPTS_PER_PAGE;
-  const currentPrompts = filteredPrompts.slice(startIndex, startIndex + PROMPTS_PER_PAGE);
-
-  const renderPagination = () => {
+  const renderPagination = useCallback(() => {
+    const { totalPages } = paginationData;
     if (totalPages <= 1) return null;
 
     const pages = [];
-    const maxVisiblePages = 5;
+    const maxVisiblePages = 3; // Reduced for mobile
     let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
     let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
@@ -298,29 +301,11 @@ const Index = () => {
         size="sm"
         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
         disabled={currentPage === 1}
-        className="min-w-[40px] h-10"
+        className="min-w-[32px] h-8"
       >
-        <ChevronLeft className="w-4 h-4" />
+        <ChevronLeft className="w-3 h-3" />
       </Button>
     );
-
-    // First page
-    if (startPage > 1) {
-      pages.push(
-        <Button
-          key={1}
-          variant={1 === currentPage ? "default" : "outline"}
-          size="sm"
-          onClick={() => setCurrentPage(1)}
-          className="min-w-[40px] h-10"
-        >
-          1
-        </Button>
-      );
-      if (startPage > 2) {
-        pages.push(<span key="ellipsis1" className="px-2">...</span>);
-      }
-    }
 
     // Page numbers
     for (let i = startPage; i <= endPage; i++) {
@@ -330,27 +315,9 @@ const Index = () => {
           variant={i === currentPage ? "default" : "outline"}
           size="sm"
           onClick={() => setCurrentPage(i)}
-          className="min-w-[40px] h-10"
+          className="min-w-[32px] h-8 text-xs"
         >
           {i}
-        </Button>
-      );
-    }
-
-    // Last page
-    if (endPage < totalPages) {
-      if (endPage < totalPages - 1) {
-        pages.push(<span key="ellipsis2" className="px-2">...</span>);
-      }
-      pages.push(
-        <Button
-          key={totalPages}
-          variant={totalPages === currentPage ? "default" : "outline"}
-          size="sm"
-          onClick={() => setCurrentPage(totalPages)}
-          className="min-w-[40px] h-10"
-        >
-          {totalPages}
         </Button>
       );
     }
@@ -363,34 +330,34 @@ const Index = () => {
         size="sm"
         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
         disabled={currentPage === totalPages}
-        className="min-w-[40px] h-10"
+        className="min-w-[32px] h-8"
       >
-        <ChevronRight className="w-4 h-4" />
+        <ChevronRight className="w-3 h-3" />
       </Button>
     );
 
     return pages;
-  };
+  }, [paginationData, currentPage]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Memuat prompts...</p>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-3"></div>
+          <p className="text-slate-600 text-sm">Memuat prompts...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-white">
       {/* Password Banner */}
       {showPasswordBanner && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-slate-800">Masukkan Password</h3>
+          <div className="bg-white rounded-lg p-4 w-full max-w-sm shadow-xl">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-base font-semibold text-slate-800">Password</h3>
               <Button
                 variant="ghost"
                 size="sm"
@@ -399,26 +366,26 @@ const Index = () => {
                   setPasswordInput('');
                   setPendingAction(null);
                 }}
-                className="text-slate-500 hover:text-slate-700"
+                className="text-slate-500 hover:text-slate-700 h-6 w-6 p-0"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3 h-3" />
               </Button>
             </div>
-            <p className="text-slate-600 mb-4">
-              Masukkan password untuk {pendingAction?.type === 'add' ? 'menambah prompt baru' : 
-                pendingAction?.type === 'edit' ? 'mengedit prompt' : 'menghapus prompt'}:
+            <p className="text-slate-600 mb-3 text-sm">
+              Masukkan password untuk {pendingAction?.type === 'add' ? 'menambah' : 
+                pendingAction?.type === 'edit' ? 'mengedit' : 'menghapus'} prompt:
             </p>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Input
                 type="password"
                 placeholder="Password"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-                className="bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
+                className="bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 h-8"
                 autoFocus
               />
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -426,15 +393,15 @@ const Index = () => {
                     setPasswordInput('');
                     setPendingAction(null);
                   }}
-                  className="flex-1"
+                  className="flex-1 h-8 text-xs"
                 >
                   Batal
                 </Button>
                 <Button
                   onClick={handlePasswordSubmit}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 h-8 text-xs"
                 >
-                  Konfirmasi
+                  OK
                 </Button>
               </div>
             </div>
@@ -442,14 +409,14 @@ const Index = () => {
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto p-4 md:p-6">
+      <div className="max-w-[728px] mx-auto p-3 md:p-4">
         {/* Header */}
-        <div className="bg-white rounded-xl p-6 mb-6 shadow-sm border border-slate-200">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl md:text-3xl font-semibold text-slate-800 mb-3">
+        <div className="bg-white border border-slate-200 rounded-lg p-4 mb-4 shadow-sm">
+          <div className="text-center mb-4">
+            <h1 className="text-xl md:text-2xl font-semibold text-slate-800 mb-2">
               PROMPT ZONE
             </h1>
-            <p className="text-slate-600 mb-6">
+            <p className="text-slate-600 mb-4 text-sm">
               Kumpulan prompt ai by{' '}
               <a
                 href="https://fb.me/didin.prasetyawan"
@@ -462,76 +429,76 @@ const Index = () => {
             </p>
             <Button 
               onClick={() => openModal()}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-3 h-3 mr-1" />
               Add Prompt
             </Button>
           </div>
 
           {/* Search */}
-          <div className="relative max-w-md mx-auto">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+          <div className="relative max-w-sm mx-auto">
+            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3 h-3" />
             <Input
               type="text"
               placeholder="Cari prompts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
+              className="pl-7 bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 h-8 text-sm"
             />
           </div>
         </div>
 
         {/* Prompts Grid */}
-        {currentPrompts.length === 0 ? (
-          <div className="bg-slate-50 rounded-xl p-12 text-center border border-dashed border-slate-300">
-            <p className="text-slate-500">
-              {searchQuery ? 'Tidak ada prompt yang ditemukan.' : 'Belum ada prompt tersimpan. Klik "Add Prompt" untuk menambahkan.'}
+        {paginationData.currentPrompts.length === 0 ? (
+          <div className="bg-slate-50 rounded-lg p-8 text-center border border-dashed border-slate-300">
+            <p className="text-slate-500 text-sm">
+              {searchQuery ? 'Tidak ada prompt yang ditemukan.' : 'Belum ada prompt tersimpan.'}
             </p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              {currentPrompts.map((prompt) => (
+            <div className="grid grid-cols-1 gap-3 mb-4">
+              {paginationData.currentPrompts.map((prompt) => (
                 <div
                   key={prompt.id}
-                  className="bg-slate-50 rounded-xl p-5 border border-slate-200 hover:shadow-md transition-shadow flex flex-col h-full"
+                  className="bg-slate-50 rounded-lg p-3 border border-slate-200 hover:shadow-sm transition-shadow"
                 >
-                  <h3 className="font-semibold text-slate-800 mb-3 text-lg leading-tight">
+                  <h3 className="font-semibold text-slate-800 mb-2 text-sm leading-tight">
                     {prompt.title}
                   </h3>
-                  <div className="flex-1 overflow-y-auto mb-4 max-h-40">
-                    <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap break-words">
+                  <div className="mb-3 max-h-20 overflow-y-auto">
+                    <p className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap break-words">
                       {prompt.content}
                     </p>
                   </div>
-                  <div className="flex justify-end gap-2 mt-auto">
+                  <div className="flex justify-end gap-1">
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => copyToClipboard(prompt.content)}
-                      className="text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                      className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 h-6 w-6 p-0"
                       title="Copy"
                     >
-                      <Copy className="w-4 h-4" />
+                      <Copy className="w-3 h-3" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => openModal(prompt)}
-                      className="text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                      className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 h-6 w-6 p-0"
                       title="Edit"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-3 h-3" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => deletePrompt(prompt.id, prompt.title)}
-                      className="text-slate-500 hover:text-red-600 hover:bg-red-50"
+                      className="text-slate-500 hover:text-red-600 hover:bg-red-50 h-6 w-6 p-0"
                       title="Delete"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
                 </div>
@@ -539,8 +506,8 @@ const Index = () => {
             </div>
 
             {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex justify-center gap-2 flex-wrap pt-4 pb-6">
+            {paginationData.totalPages > 1 && (
+              <div className="flex justify-center gap-1 pt-2">
                 {renderPagination()}
               </div>
             )}
@@ -550,14 +517,14 @@ const Index = () => {
 
       {/* Modal */}
       <Dialog open={isModalOpen} onOpenChange={closeModal}>
-        <DialogContent className="sm:max-w-[550px] max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle className="text-xl font-semibold text-center">
+            <DialogTitle className="text-lg font-semibold text-center">
               {editingPrompt ? 'Edit Prompt' : 'Add New Prompt'}
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-1">
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
                 <Label htmlFor="title" className="text-sm font-medium text-slate-700">
                   Judul
@@ -568,7 +535,7 @@ const Index = () => {
                   placeholder="Masukkan judul prompt"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="mt-2 bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -580,12 +547,12 @@ const Index = () => {
                   placeholder="Masukkan isi prompt"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  className="mt-2 min-h-[150px] bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 resize-vertical"
+                  className="mt-1 min-h-[120px] bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 resize-vertical"
                 />
               </div>
             </div>
           </div>
-          <div className="flex justify-between gap-3 pt-4 border-t border-slate-200 bg-slate-50 -mx-6 px-6 -mb-6 pb-6 rounded-b-lg">
+          <div className="flex justify-between gap-3 pt-3 border-t border-slate-200 bg-slate-50 -mx-6 px-6 -mb-6 pb-6 rounded-b-lg">
             <Button
               variant="outline"
               onClick={closeModal}
