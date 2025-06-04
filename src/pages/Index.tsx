@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, Plus, Copy, Edit2, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -503,17 +502,17 @@ const Index = () => {
               {paginationData.currentPrompts.map((prompt) => (
                 <div
                   key={prompt.id}
-                  className="bg-slate-50 rounded-lg p-3 border border-slate-200 hover:shadow-sm transition-shadow"
+                  className="bg-slate-50 rounded-lg p-3 border border-slate-200 hover:shadow-sm transition-shadow flex flex-col h-32"
                 >
                   <h3 className="font-semibold text-slate-800 mb-2 text-sm leading-tight text-center">
                     {prompt.title}
                   </h3>
-                  <div className="mb-3 max-h-16 overflow-y-auto">
+                  <div className="flex-1 mb-3 overflow-y-auto">
                     <p className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap break-words">
                       {prompt.content}
                     </p>
                   </div>
-                  <div className="flex justify-center gap-1">
+                  <div className="flex justify-center gap-1 mt-auto">
                     <Button
                       variant="ghost"
                       size="sm"
