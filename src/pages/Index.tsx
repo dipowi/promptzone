@@ -17,7 +17,7 @@ interface Prompt {
   updated_at?: string;
 }
 
-const PROMPTS_PER_PAGE = 8; // Reduced for faster loading
+const PROMPTS_PER_PAGE = 6; // Reduced even more for faster loading
 const PASSWORD = "300695";
 
 const Index = () => {
@@ -56,10 +56,44 @@ const Index = () => {
     return { totalPages, currentPrompts };
   }, [filteredPrompts, currentPage]);
 
-  // Load prompts from Supabase
+  // Load prompts from Supabase with optimizations
   useEffect(() => {
-    loadPrompts();
-  }, []);
+    const loadPromptsOptimized = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Optimize Supabase query with minimal fields first
+        const { data, error } = await supabase
+          .from('prompts')
+          .select('id, title, content, created_at')
+          .order('created_at', { ascending: false })
+          .limit(100); // Limit initial load
+
+        if (error) {
+          console.error('Error loading prompts:', error);
+          toast({
+            title: "Error",
+            description: "Gagal memuat prompts.",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        setPrompts(data || []);
+      } catch (error) {
+        console.error('Error loading prompts:', error);
+        toast({
+          title: "Error",
+          description: "Gagal memuat prompts.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadPromptsOptimized();
+  }, [toast]);
 
   // Reset page when search changes
   useEffect(() => {
@@ -68,7 +102,6 @@ const Index = () => {
 
   const loadPrompts = useCallback(async () => {
     try {
-      setIsLoading(true);
       const { data, error } = await supabase
         .from('prompts')
         .select('*')
@@ -92,8 +125,6 @@ const Index = () => {
         description: "Gagal memuat prompts.",
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   }, [toast]);
 
@@ -285,7 +316,7 @@ const Index = () => {
     if (totalPages <= 1) return null;
 
     const pages = [];
-    const maxVisiblePages = 3; // Reduced for mobile
+    const maxVisiblePages = 3;
     let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
     let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
@@ -410,13 +441,13 @@ const Index = () => {
       )}
 
       <div className="max-w-[728px] mx-auto p-3 md:p-4">
-        {/* Header */}
+        {/* Header - Centered */}
         <div className="bg-white border border-slate-200 rounded-lg p-4 mb-4 shadow-sm">
           <div className="text-center mb-4">
-            <h1 className="text-xl md:text-2xl font-semibold text-slate-800 mb-2">
+            <h1 className="text-xl md:text-2xl font-semibold text-slate-800 mb-2 text-center">
               PROMPT ZONE
             </h1>
-            <p className="text-slate-600 mb-4 text-sm">
+            <p className="text-slate-600 mb-4 text-sm text-center">
               Kumpulan prompt ai by{' '}
               <a
                 href="https://fb.me/didin.prasetyawan"
@@ -427,13 +458,15 @@ const Index = () => {
                 didin prasetyawan
               </a>
             </p>
-            <Button 
-              onClick={() => openModal()}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm"
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              Add Prompt
-            </Button>
+            <div className="flex justify-center">
+              <Button 
+                onClick={() => openModal()}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Add Prompt
+              </Button>
+            </div>
           </div>
 
           {/* Search */}
@@ -464,7 +497,7 @@ const Index = () => {
                   key={prompt.id}
                   className="bg-slate-50 rounded-lg p-3 border border-slate-200 hover:shadow-sm transition-shadow"
                 >
-                  <h3 className="font-semibold text-slate-800 mb-2 text-sm leading-tight">
+                  <h3 className="font-semibold text-slate-800 mb-2 text-sm leading-tight text-center">
                     {prompt.title}
                   </h3>
                   <div className="mb-3 max-h-20 overflow-y-auto">
@@ -472,7 +505,7 @@ const Index = () => {
                       {prompt.content}
                     </p>
                   </div>
-                  <div className="flex justify-end gap-1">
+                  <div className="flex justify-center gap-1">
                     <Button
                       variant="ghost"
                       size="sm"
